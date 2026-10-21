@@ -1,9 +1,15 @@
 import { AnalyzeRequest, AnalyzeResponse, HealthResponse } from './types';
 
-// Read API Base URL from environment or default to backend port
+// Read API Base URL from environment.
+// In development, default to local backend 'http://localhost:8000' (or Vite proxy).
+// In production, if VITE_API_BASE_URL is not set, default to '' (same-origin relative '/api' for unified Vercel deployment).
+const rawApiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
 const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ||
-  'http://localhost:8000';
+  rawApiBase !== undefined && rawApiBase.trim() !== ''
+    ? rawApiBase.trim().replace(/\/$/, '')
+    : import.meta.env.DEV
+      ? 'http://localhost:8000'
+      : '';
 
 /**
  * Fetch health status from backend API.

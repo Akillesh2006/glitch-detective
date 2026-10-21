@@ -5,7 +5,7 @@ from app.schemas import AnalyzeRequest, AnalyzeResponse, SupportedLanguage
 from app.engine.python_analyzer import analyze_python_snippet
 from app.engine.java_analyzer import analyze_java_snippet
 
-router = APIRouter(prefix="/api", tags=["analyze"])
+router = APIRouter(tags=["analyze"])
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, summary="Analyze Code Snippet")
