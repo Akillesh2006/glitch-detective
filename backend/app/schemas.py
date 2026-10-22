@@ -233,3 +233,14 @@ class VerifyChallengeResponse(BaseModel):
     feedback: str = Field(..., description="Helpful, non-spoiling pedagogical feedback")
     details: Optional[str] = Field(default=None, description="Additional context or syntax clues")
 
+
+class ChallengeSolutionResponse(BaseModel):
+    """Payload for revealing the canonical solution and pedagogical rationale."""
+    challenge_id: str = Field(..., description="Target challenge identifier")
+    title: str = Field(..., description="Mystery title")
+    canonical_solution: str = Field(..., description="Complete intended corrected code")
+    bug_explanation: str = Field(..., description="Concise explanation of the original defect")
+    fix_rationale: str = Field(..., description="Explanation of why the correction works")
+    real_world_analogy: Optional[str] = Field(default=None, description="Optional relatable real-world analogy")
+
+

@@ -6,6 +6,7 @@ import {
   fetchNextChallenge,
   fetchChallengeById,
   verifyChallengeSolution,
+  fetchChallengeSolution,
 } from './api';
 
 describe('Frontend API Client (api.ts)', () => {
@@ -201,4 +202,40 @@ describe('Frontend API Client (api.ts)', () => {
     expect(result.passed).toBe(true);
     expect(result.status).toBe('correct');
   });
+
+  it('fetchChallengeSolution queries /api/challenges/:id/solution and parses solution', async () => {
+    const mockSolution = {
+      challenge_id: 'py-receipt-unclosed-paren',
+      title: 'The Mystery of the Silent Receipt',
+      canonical_solution: 'print("Hello")',
+      bug_explanation: 'Unclosed parenthesis on line 3.',
+      fix_rationale: 'Adding closing parenthesis completes the call.',
+      real_world_analogy: 'Unclosed quote in speech.',
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockSolution,
+    } as Response);
+
+    const result = await fetchChallengeSolution('py-receipt-unclosed-paren');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/challenges\/py-receipt-unclosed-paren\/solution$/),
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(result.challenge_id).toBe('py-receipt-unclosed-paren');
+    expect(result.canonical_solution).toBe('print("Hello")');
+    expect(result.bug_explanation).toContain('Unclosed parenthesis');
+  });
+
+  it('fetchChallengeSolution throws when server returns error response', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: "Challenge 'nonexistent' not found." }),
+    } as Response);
+
+    await expect(fetchChallengeSolution('nonexistent')).rejects.toThrow("Challenge 'nonexistent' not found.");
+  });
 });
+

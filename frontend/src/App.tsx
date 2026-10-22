@@ -8,6 +8,7 @@ import {
   ChallengeSummary,
   ChallengeDetail,
   VerifyChallengeResponse,
+  ChallengeSolutionResponse,
 } from './types';
 import {
   analyzeCode,
@@ -16,6 +17,7 @@ import {
   fetchNextChallenge,
   fetchChallengeById,
   verifyChallengeSolution,
+  fetchChallengeSolution,
 } from './api';
 import {
   loadSolvedChallenges,
@@ -73,7 +75,7 @@ const EXTENDED_SAMPLES: SampleSnippet[] = [
   },
 ];
 
-const TOTAL_DOSSIER_CHALLENGES = 8;
+const TOTAL_DOSSIER_CHALLENGES = 20;
 
 export const App: React.FC = () => {
   const [language, setLanguage] = useState<SupportedLanguage>('python');
@@ -140,6 +142,10 @@ export const App: React.FC = () => {
   const [verificationResult, setVerificationResult] = useState<VerifyChallengeResponse | null>(null);
   const [solvedChallenges, setSolvedChallenges] = useState<string[]>(() => loadSolvedChallenges());
   const [challengeSeed, setChallengeSeed] = useState<number>(0);
+  const [revealedSolution, setRevealedSolution] = useState<ChallengeSolutionResponse | null>(null);
+  const [isRevealingSolution, setIsRevealingSolution] = useState<boolean>(false);
+  const [solutionRevealError, setSolutionRevealError] = useState<string | null>(null);
+  const [copiedSolution, setCopiedSolution] = useState<boolean>(false);
   const detectiveReqIdRef = React.useRef<number>(0);
 
   // Load challenge detail by ID or next seed
@@ -152,6 +158,8 @@ export const App: React.FC = () => {
     setDetectiveLoading(true);
     setDetectiveError(null);
     setVerificationResult(null);
+    setRevealedSolution(null);
+    setSolutionRevealError(null);
 
     try {
       const summaries = await fetchChallenges(lang);
@@ -232,8 +240,35 @@ export const App: React.FC = () => {
     if (currentChallenge) {
       setDetectiveCode(currentChallenge.buggy_code);
       setVerificationResult(null);
+      setRevealedSolution(null);
+      setSolutionRevealError(null);
     }
   };
+
+  // Reveal canonical solution after all forensic clues unlocked
+  const handleRevealSolution = async () => {
+    if (!currentChallenge || isRevealingSolution) return;
+    setIsRevealingSolution(true);
+    setSolutionRevealError(null);
+    try {
+      const solutionData = await fetchChallengeSolution(currentChallenge.id);
+      setRevealedSolution(solutionData);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to retrieve canonical solution.';
+      setSolutionRevealError(msg);
+    } finally {
+      setIsRevealingSolution(false);
+    }
+  };
+
+  // Copy canonical solution code
+  const handleCopySolution = (codeToCopy: string) => {
+    if (!codeToCopy) return;
+    navigator.clipboard.writeText(codeToCopy);
+    setCopiedSolution(true);
+    setTimeout(() => setCopiedSolution(false), 2000);
+  };
+
 
   // Submit fix for verification
   const handleSubmitSolution = async () => {
@@ -1502,11 +1537,112 @@ export const App: React.FC = () => {
                         ))
                       )}
                     </div>
+
+                    {/* Solution Reveal learning gate */}
+                    {currentChallenge.unlocked_hints.length >= currentChallenge.total_hints && !revealedSolution && (
+                      <div className="solution-gate-container" id="solution-gate-container">
+                        <p className="solution-gate-text">
+                          All clues unlocked! Ready to study the canonical solution and conceptual explanation?
+                        </p>
+                        <button
+                          type="button"
+                          id="reveal-solution-button"
+                          className="btn-primary reveal-solution-btn"
+                          onClick={handleRevealSolution}
+                          disabled={isRevealingSolution}
+                        >
+                          {isRevealingSolution ? (
+                            <>
+                              <span className="spinner"></span>
+                              <span>Unlocking Solution...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>🔓 Reveal Solution</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    {solutionRevealError && (
+                      <div className="alert-box alert-error" id="solution-reveal-error" style={{ marginTop: '0.75rem' }}>
+                        <span>⚡ {solutionRevealError}</span>
+                        <button
+                          type="button"
+                          className="btn-text-link"
+                          onClick={handleRevealSolution}
+                          style={{ marginLeft: '0.5rem', color: '#fff', textDecoration: 'underline' }}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </article>
+
+                {/* Official Solution Revealed Card */}
+                {revealedSolution && (
+                  <article className="result-card card-solution-revealed" id="detective-solution-card">
+                    <div className="result-card-header solution-revealed-header">
+                      <div className="step-card-heading">
+                        <span className="badge-solution-revealed">🔓 Official Solution Unlocked</span>
+                        <h4 className="solution-revealed-title">{revealedSolution.title}</h4>
+                      </div>
+                      <span role="img" aria-label="key">🔑</span>
+                    </div>
+
+                    <div className="result-card-body">
+                      <div className="solution-section">
+                        <span className="solution-label">🐛 The Original Defect:</span>
+                        <p className="solution-explanation-text" id="solution-bug-explanation">
+                          {revealedSolution.bug_explanation}
+                        </p>
+                      </div>
+
+                      <div className="solution-section">
+                        <span className="solution-label">✨ Why the Correction Works:</span>
+                        <p className="solution-explanation-text" id="solution-fix-rationale">
+                          {revealedSolution.fix_rationale}
+                        </p>
+                      </div>
+
+                      {revealedSolution.real_world_analogy && (
+                        <div className="solution-section">
+                          <span className="solution-label">🌍 Real-World Analogy:</span>
+                          <p className="solution-analogy-text" id="solution-real-world-analogy">
+                            {revealedSolution.real_world_analogy}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="solution-code-block-container">
+                        <div className="code-block-header">
+                          <span>Corrected Canonical Code</span>
+                          <button
+                            type="button"
+                            className="btn-copy-code"
+                            id="copy-solution-btn"
+                            onClick={() => handleCopySolution(revealedSolution.canonical_solution)}
+                          >
+                            {copiedSolution ? '✓ Copied' : '📋 Copy Solution'}
+                          </button>
+                        </div>
+                        <pre className="code-pre-block" id="solution-canonical-code">
+                          <code>{revealedSolution.canonical_solution}</code>
+                        </pre>
+                      </div>
+
+                      <div className="solution-notice-pill" id="solution-pedagogical-notice">
+                        <span>💡 Revealing the solution does not mark this case as solved. Study the fix above, apply it in the editor on the right, and click <strong>Submit Fix for Verification</strong> to earn credit!</span>
+                      </div>
+                    </div>
+                  </article>
+                )}
               </>
             )}
           </div>
+
 
           {/* Right Column: Crime Scene Code Editor & Verification */}
           <div className="panel-card" id="detective-editor-panel">

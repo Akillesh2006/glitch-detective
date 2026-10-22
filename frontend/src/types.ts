@@ -78,3 +78,13 @@ export interface VerifyChallengeResponse {
   details?: string | null;
 }
 
+export interface ChallengeSolutionResponse {
+  challenge_id: string;
+  title: string;
+  canonical_solution: string;
+  bug_explanation: string;
+  fix_rationale: string;
+  real_world_analogy?: string | null;
+}
+
+

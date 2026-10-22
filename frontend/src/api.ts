@@ -182,3 +182,26 @@ export async function verifyChallengeSolution(
   return response.json();
 }
 
+/**
+ * Fetch canonical solution and pedagogical rationale for a mystery.
+ * (UI learning gate: accessed after all hints are unlocked)
+ */
+export async function fetchChallengeSolution(
+  challengeId: string
+): Promise<import('./types').ChallengeSolutionResponse> {
+  const safeId = encodeURIComponent(challengeId);
+  const url = `${API_BASE_URL}/api/challenges/${safeId}/solution`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+
+  return response.json();
+}
+
+

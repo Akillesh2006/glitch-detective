@@ -4,6 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from app.schemas import (
     ChallengeDetail,
+    ChallengeSolutionResponse,
     ChallengeSummary,
     SupportedLanguage,
     VerifyChallengeRequest,
@@ -11,6 +12,7 @@ from app.schemas import (
 )
 from app.engine.challenge_catalog import (
     get_challenge_detail,
+    get_challenge_solution,
     get_next_challenge,
     list_challenges,
 )
@@ -69,6 +71,29 @@ def get_challenge_by_id(
             detail=f"Challenge '{challenge_id}' not found.",
         )
     return challenge
+
+
+@router.get(
+    "/challenges/{challenge_id}/solution",
+    response_model=ChallengeSolutionResponse,
+    summary="Reveal Canonical Challenge Solution",
+)
+def reveal_challenge_solution(
+    challenge_id: str,
+) -> ChallengeSolutionResponse:
+    """Reveal the canonical solution, bug explanation, and rationale for a mystery.
+    
+    Pedagogical design note: The client UI gates this behind revealing all hints.
+    This endpoint explicitly provides the intended solution upon request.
+    """
+    solution = get_challenge_solution(challenge_id)
+    if not solution:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Challenge '{challenge_id}' not found.",
+        )
+    return solution
+
 
 
 @router.post(

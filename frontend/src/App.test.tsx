@@ -13,6 +13,7 @@ vi.mock('./api', () => ({
   fetchNextChallenge: vi.fn(),
   fetchChallengeById: vi.fn(),
   verifyChallengeSolution: vi.fn(),
+  fetchChallengeSolution: vi.fn(),
 }));
 
 const mockDiagnosticResponse: AnalyzeResponse = {
@@ -496,6 +497,17 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
         unlocked_hints: sampleHints.slice(0, hintLevel),
       };
     });
+
+    (api.fetchChallengeSolution as any).mockImplementation(async (id: string) => {
+      return {
+        challenge_id: id,
+        title: 'The Mystery of the Silent Receipt',
+        canonical_solution: 'def print_receipt():\n    print("Total")',
+        bug_explanation: 'An unclosed parenthesis on line 3 causes SyntaxError.',
+        fix_rationale: 'Adding the closing parenthesis balances the expression.',
+        real_world_analogy: 'Like leaving off a closing quote in a sentence.',
+      };
+    });
   });
 
   it('keeps Code Mode as the default and renders the mode switcher', async () => {
@@ -808,13 +820,13 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
       expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
     });
 
-    // Initial state: 0 of 8 Solved
-    expect(screen.getByText(/0 of 8 Solved/i)).toBeDefined();
+    // Initial state: 0 of 20 Solved
+    expect(screen.getByText(/0 of 20 Solved/i)).toBeDefined();
 
     // Submit correct Python fix
     fireEvent.click(screen.getByRole('button', { name: /Submit Fix for Verification/i }));
     await waitFor(() => {
-      expect(screen.getByText(/1 of 8 Solved/i)).toBeDefined();
+      expect(screen.getByText(/1 of 20 Solved/i)).toBeDefined();
     });
 
     // Switch to Java and submit correct Java fix
@@ -822,12 +834,12 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
     await waitFor(() => {
       expect(screen.getByText('The Mystery of the Truncated Greeting')).toBeDefined();
     });
-    // Count remains 1 of 8 Solved while viewing Java before submitting
-    expect(screen.getByText(/1 of 8 Solved/i)).toBeDefined();
+    // Count remains 1 of 20 Solved while viewing Java before submitting
+    expect(screen.getByText(/1 of 20 Solved/i)).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: /Submit Fix for Verification/i }));
     await waitFor(() => {
-      expect(screen.getByText(/2 of 8 Solved/i)).toBeDefined();
+      expect(screen.getByText(/2 of 20 Solved/i)).toBeDefined();
     });
 
     // Verify localStorage has both IDs
@@ -885,6 +897,107 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
       expect(api.fetchNextChallenge).toHaveBeenCalledWith('python', undefined, 0);
       expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
     });
+  });
+
+  it('hides solution reveal button until all clues are revealed, then reveals canonical fix on click', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: /Detective Mode/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
+    });
+
+    // Initially with 0 clues, the reveal button is NOT available
+    expect(screen.queryByRole('button', { name: /Reveal Solution/i })).toBeNull();
+    expect(screen.queryByText(/Official Solution Unlocked/i)).toBeNull();
+
+    // Click clue button once (1 of 2 clues revealed)
+    const hintBtn = screen.getByRole('button', { name: /Reveal Next Clue/i });
+    fireEvent.click(hintBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Clue #1')).toBeDefined();
+    });
+    // Still not all clues unlocked
+    expect(screen.queryByRole('button', { name: /Reveal Solution/i })).toBeNull();
+
+    // Click clue button second time (2 of 2 clues revealed)
+    fireEvent.click(hintBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Clue #2')).toBeDefined();
+    });
+
+    // Now reveal solution button IS visible
+    const revealBtn = screen.getByRole('button', { name: /Reveal Solution/i });
+    expect(revealBtn).toBeDefined();
+
+    // Solution card is still NOT shown until clicked
+    expect(screen.queryByText(/Official Solution Unlocked/i)).toBeNull();
+
+    // Click Reveal Solution
+    fireEvent.click(revealBtn);
+
+    await waitFor(() => {
+      expect(api.fetchChallengeSolution).toHaveBeenCalledWith('py-receipt-unclosed-paren');
+      expect(screen.getByText(/Official Solution Unlocked/i)).toBeDefined();
+      expect(screen.getByText(/The Original Defect/i)).toBeDefined();
+      expect(screen.getByText(/Why the Correction Works/i)).toBeDefined();
+      expect(screen.getByText(/Real-World Analogy/i)).toBeDefined();
+      expect(screen.getByText(/Corrected Canonical Code/i)).toBeDefined();
+    });
+
+    // Revealing solution must NOT mark case solved in dossier
+    expect(screen.getByText(/0 of 20 Solved/i)).toBeDefined();
+  });
+
+  it('clears revealed solution state when switching mystery case or resetting code', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: /Detective Mode/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
+    });
+
+    // Unlock both hints
+    const hintBtn = screen.getByRole('button', { name: /Reveal Next Clue/i });
+    fireEvent.click(hintBtn);
+    await waitFor(() => expect(screen.getByText('Clue #1')).toBeDefined());
+    fireEvent.click(hintBtn);
+    await waitFor(() => expect(screen.getByText('Clue #2')).toBeDefined());
+
+    // Reveal solution
+    const revealBtn = screen.getByRole('button', { name: /Reveal Solution/i });
+    fireEvent.click(revealBtn);
+    await waitFor(() => {
+      expect(screen.getByText(/Official Solution Unlocked/i)).toBeDefined();
+    });
+
+    // Test 1: Resetting code back to buggy code clears the revealed solution
+    const resetBtn = screen.getByRole('button', { name: /Reset to Buggy Code/i });
+    fireEvent.click(resetBtn);
+    expect(screen.queryByText(/Official Solution Unlocked/i)).toBeNull();
+
+    // Unlock hints and reveal solution again
+    fireEvent.click(hintBtn);
+    await waitFor(() => expect(screen.getByText('Clue #1')).toBeDefined());
+    fireEvent.click(hintBtn);
+    await waitFor(() => expect(screen.getByText('Clue #2')).toBeDefined());
+    const revealBtn2 = screen.getByRole('button', { name: /Reveal Solution/i });
+    fireEvent.click(revealBtn2);
+    await waitFor(() => {
+      expect(screen.getByText(/Official Solution Unlocked/i)).toBeDefined();
+    });
+
+    // Test 2: Switching to another mystery clears the revealed solution
+    const selector = screen.getByLabelText(/Select Active Mystery Case/i);
+    fireEvent.change(selector, { target: { value: 'py-traffic-missing-colon' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Highway Gate')).toBeDefined();
+    });
+
+    expect(screen.queryByText(/Official Solution Unlocked/i)).toBeNull();
   });
 });
 

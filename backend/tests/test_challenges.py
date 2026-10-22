@@ -32,12 +32,19 @@ class TestChallengeCatalog:
     """Tests for the static catalog, template structure, and answer concealment."""
 
     def test_catalog_has_expected_templates(self):
-        """Catalog must contain 8 beginner challenges: 4 Python and 4 Java."""
-        assert len(CHALLENGE_CATALOG) == 8
+        """Catalog must contain 20 curated challenges: 10 Python and 10 Java across 3 tiers."""
+        assert len(CHALLENGE_CATALOG) == 20
         python_challenges = [c for c in CHALLENGE_CATALOG.values() if c.language == SupportedLanguage.PYTHON]
         java_challenges = [c for c in CHALLENGE_CATALOG.values() if c.language == SupportedLanguage.JAVA]
-        assert len(python_challenges) == 4
-        assert len(java_challenges) == 4
+        assert len(python_challenges) == 10
+        assert len(java_challenges) == 10
+
+        # Check difficulty tiers representation
+        for lang_challenges in (python_challenges, java_challenges):
+            tiers = {c.difficulty for c in lang_challenges}
+            assert "beginner" in tiers
+            assert "intermediate" in tiers
+            assert "advanced" in tiers
 
     @pytest.mark.parametrize("challenge_id", list(CHALLENGE_CATALOG.keys()))
     def test_template_fields_validity(self, challenge_id: str):
@@ -47,13 +54,17 @@ class TestChallengeCatalog:
         assert tmpl.id == challenge_id
         assert len(tmpl.title) > 5
         assert tmpl.language in (SupportedLanguage.PYTHON, SupportedLanguage.JAVA)
-        assert tmpl.difficulty == "beginner"
+        assert tmpl.difficulty in ("beginner", "intermediate", "advanced")
         assert len(tmpl.category) > 0
         assert len(tmpl.scenario) > 15
         assert len(tmpl.buggy_code) > 10
         assert len(tmpl.expected_behavior) > 10
         assert len(tmpl.hints) >= 2
         assert len(tmpl.canonical_solutions) >= 1
+        assert len(tmpl.bug_explanation) > 10
+        assert len(tmpl.fix_rationale) > 10
+        assert tmpl.real_world_analogy is not None
+
 
     def test_progressive_hints_concealment(self):
         """Progressive hints must only reveal requested hint levels and never future hints."""
@@ -321,16 +332,34 @@ class TestChallengeVerification:
         assert res.status == "ambiguous"
         assert "does not exist" in res.feedback.lower()
 
+    @pytest.mark.parametrize("challenge_id", list(CHALLENGE_CATALOG.keys()))
+    def test_every_challenge_canonical_solution_passes(self, challenge_id: str):
+        """Every canonical solution for every challenge in the catalog must verify successfully."""
+        tmpl = CHALLENGE_CATALOG[challenge_id]
+        for canonical in tmpl.canonical_solutions:
+            res = verify_solution(challenge_id, canonical)
+            assert res.passed is True, f"Failed for challenge {challenge_id}: {res.feedback}"
+            assert res.status == "correct"
+
+    @pytest.mark.parametrize("challenge_id", list(CHALLENGE_CATALOG.keys()))
+    def test_every_challenge_buggy_code_fails(self, challenge_id: str):
+        """The uncorrected buggy code for every challenge must fail verification."""
+        tmpl = CHALLENGE_CATALOG[challenge_id]
+        res = verify_solution(challenge_id, tmpl.buggy_code)
+        assert res.passed is False, f"Expected buggy code to fail for {challenge_id}"
+        assert res.status in ("incorrect", "ambiguous")
+
+
 
 class TestChallengeAPIEndpoints:
     """Tests for FastAPI HTTP challenge endpoints."""
 
     def test_list_challenges_endpoint(self):
-        """GET /api/challenges returns all 8 challenges."""
+        """GET /api/challenges returns all 20 challenges."""
         response = client.get("/api/challenges")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 8
+        assert len(data) == 20
         for item in data:
             assert "id" in item
             assert "title" in item
@@ -347,13 +376,23 @@ class TestChallengeAPIEndpoints:
         res = client.get("/api/challenges?language=python")
         assert res.status_code == 200
         data = res.json()
-        assert len(data) == 4
+        assert len(data) == 10
         assert all(item["language"] == "python" for item in data)
 
         res_java = client.get("/api/challenges?language=java")
         assert res_java.status_code == 200
-        assert len(res_java.json()) == 4
+        assert len(res_java.json()) == 10
         assert all(item["language"] == "java" for item in res_java.json())
+
+    def test_list_challenges_filter_difficulty(self):
+        """GET /api/challenges?difficulty=... filters correctly."""
+        for diff in ("beginner", "intermediate", "advanced"):
+            res = client.get(f"/api/challenges?difficulty={diff}")
+            assert res.status_code == 200
+            items = res.json()
+            assert len(items) > 0
+            assert all(item["difficulty"].lower() == diff for item in items)
+
 
     def test_next_challenge_endpoint(self):
         """GET /api/challenges/next returns next challenge with hint_level=0."""
@@ -467,3 +506,45 @@ class TestChallengeAPIEndpoints:
         assert data["status"] == "syntax_error"
         assert data["real_world_analogy"] is not None
         assert data["actionable_summary"] is not None
+
+    @pytest.mark.parametrize("challenge_id", list(CHALLENGE_CATALOG.keys()))
+    def test_reveal_solution_endpoint_valid(self, challenge_id: str):
+        """GET /api/challenges/{id}/solution returns canonical solution and rationale."""
+        res = client.get(f"/api/challenges/{challenge_id}/solution")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["challenge_id"] == challenge_id
+        assert len(data["title"]) > 0
+        assert len(data["canonical_solution"]) > 10
+        assert len(data["bug_explanation"]) > 10
+        assert len(data["fix_rationale"]) > 10
+        assert "real_world_analogy" in data
+
+    def test_reveal_solution_endpoint_404(self):
+        """GET /api/challenges/{id}/solution returns 404 for unknown challenge."""
+        res = client.get("/api/challenges/nonexistent-mystery-id/solution")
+        assert res.status_code == 404
+        assert "not found" in res.json()["detail"].lower()
+
+    def test_ordinary_endpoints_never_contain_canonical_solution(self):
+        """Ordinary GET /api/challenges, /api/challenges/next, and /api/challenges/{id} never expose solutions."""
+        # 1. Catalog list
+        list_res = client.get("/api/challenges")
+        assert list_res.status_code == 200
+        for item in list_res.json():
+            assert "canonical_solution" not in item
+            assert "canonical_solutions" not in item
+            assert "solution" not in item
+
+        # 2. Next challenge
+        next_res = client.get("/api/challenges/next?language=python")
+        assert next_res.status_code == 200
+        assert "canonical_solution" not in next_res.json()
+        assert "canonical_solutions" not in next_res.json()
+
+        # 3. Challenge detail with all hints unlocked
+        detail_res = client.get("/api/challenges/py-receipt-unclosed-paren?hint_level=2")
+        assert detail_res.status_code == 200
+        assert "canonical_solution" not in detail_res.json()
+        assert "canonical_solutions" not in detail_res.json()
+

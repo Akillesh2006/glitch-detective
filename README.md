@@ -16,11 +16,12 @@ Paste any buggy Python or Java snippet (with optional compiler or runtime logs) 
 4. **Step 4: Verify & Learn** — Tests conceptual understanding with an interactive practice question and comprehensive rationale to solidify the pattern.
 
 ### 2. 🕵️ Detective Mode (Interactive Debugging Mysteries)
-Step into the role of a software detective solving curated syntax and logic cases across real-world scenarios:
-- **Eight Curated Mysteries**: 4 Python mysteries and 4 Java mysteries spanning delimiter mismatches, missing colons, indentation errors, missing semicolons, type incompatibilities, and beginner traps.
-- **Progressive Clues**: Request up to two progressive hints per mystery without prematurely revealing answers.
+Step into the role of a software detective solving curated syntax, semantic, and logic cases across real-world scenarios:
+- **Twenty Curated Mysteries**: 10 Python mysteries and 10 Java mysteries organized across Beginner, Intermediate, and Advanced difficulty tiers covering delimiter mismatches, missing colons, indentation errors, operator precedence, off-by-one loop boundaries, dictionary KeyErrors, string normalization, mutable default parameters, return values, type casting, array bounds, string reference equality, integer division truncation, variable shadowing, and recursive base cases.
+- **Progressive Forensic Clues**: Request progressive clues one level at a time without prematurely revealing answers.
+- **Canonical Solution Reveal**: Once all clues have been unlocked, learners can explicitly reveal the complete canonical solution, bug explanation, fix rationale, and real-world analogy. Revealing the solution never automatically marks a case solved; learners must study the fix and verify it in the editor.
 - **Deterministic Verification**: Real-time solution verification powered by static AST analysis and token sequence checks. Accurately distinguishes between canonical solutions, accepted alternatives, original bugs, syntax errors, and unrelated code—with zero code execution on the host system.
-- **Browser-Local Dossier Progress**: Persistently tracks solved cases in `localStorage` across languages (e.g. `X of 8 Solved`), preventing duplicate increments, enabling next-case rotation with wraparound, and allowing manual case selection from the mystery dropdown.
+- **Browser-Local Dossier Progress**: Persistently tracks solved cases in `localStorage` across languages (e.g. `X of 20 Solved`), preventing duplicate increments, enabling next-case rotation with wraparound, and allowing manual case selection from the mystery dropdown.
 
 ---
 
@@ -38,13 +39,14 @@ Every release is verified by automated test suites across both backend and front
 | Component | Test Suite | Tests Passed | Focus Areas |
 |:---|:---|:---:|:---|
 | **Backend** | `backend/tests/test_analyze.py` | 40 | Python AST parsing, line/column coordinates, Java static analysis, boundaries |
-| **Backend** | `backend/tests/test_challenges.py` | 39 | Challenge catalog, filtering, seed rotation, hint disclosure, AST verifier |
+| **Backend** | `backend/tests/test_challenges.py` | 114 | 20 challenge catalog entries, difficulty tiers, seed rotation, hint disclosure, AST verifier, solution reveal |
 | **Backend** | `backend/tests/test_explanations.py` | 40 | Real-world analogies, actionable summaries, category mapping |
 | **Backend** | `backend/tests/test_health.py` | 4 | Service availability, supported language flags |
-| **Frontend** | `frontend/src/App.test.tsx` | 25 | Code Mode 4-step workflow, Detective Mode hints, verification, case rotation |
-| **Frontend** | `frontend/src/api.test.ts` | 8 | Typed API client methods, error propagation, network resilience |
+| **Frontend** | `frontend/src/App.test.tsx` | 27 | Code Mode 4-step workflow, Detective Mode hints, solution reveal, verification, case rotation |
+| **Frontend** | `frontend/src/api.test.ts` | 10 | Typed API client methods, solution retrieval, error propagation, network resilience |
 | **Frontend** | `frontend/src/progress.test.ts` | 7 | LocalStorage dossier persistence, deduplication, corrupt data recovery |
-| **Total** | **Pytest + Vitest** | **163** | **123 backend + 40 frontend (160 baseline + 3 Phase 4 regression tests)** |
+| **Total** | **Pytest + Vitest** | **242** | **198 backend + 44 frontend tests passing** |
+
 
 ---
 
@@ -91,7 +93,7 @@ glitch-detective/
 │   │   ├── test_health.py       # Health check tests (4 tests)
 │   │   ├── test_analyze.py      # Diagnostic engine tests (40 tests)
 │   │   ├── test_explanations.py # Analogy & explanation tests (40 tests)
-│   │   └── test_challenges.py   # Challenge catalog & verifier tests (39 tests)
+│   │   └── test_challenges.py   # Challenge catalog & verifier tests (114 tests)
 │   └── requirements.txt      # Python backend dependencies
 └── frontend/
     ├── index.html            # App entrypoint and SEO metadata
@@ -101,9 +103,9 @@ glitch-detective/
     ├── vite.config.ts        # Vite configuration with API proxying
     └── src/
         ├── App.css           # Component styles, mobile media queries, dark theme
-        ├── App.test.tsx      # Code Mode & Detective Mode unit/integration tests (25 tests)
+        ├── App.test.tsx      # Code Mode & Detective Mode unit/integration tests (27 tests)
         ├── App.tsx           # Main application view (Code Mode & Detective Mode)
-        ├── api.test.ts       # Typed API client tests (8 tests)
+        ├── api.test.ts       # Typed API client tests (10 tests)
         ├── api.ts            # Typed API client for FastAPI backend
         ├── index.css         # Global design tokens & CSS reset
         ├── main.tsx          # React DOM root render
@@ -144,7 +146,7 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-# Run the backend test suite with pytest (123 tests)
+# Run the backend test suite with pytest (198 tests)
 pytest tests
 
 # Start the local development server (runs on http://localhost:8000)
@@ -170,7 +172,7 @@ cd frontend
 # Install npm dependencies
 npm install
 
-# Run the frontend test suite with Vitest (40 tests)
+# Run the frontend test suite with Vitest (44 tests)
 npm test
 
 # Start the Vite development server (runs on http://localhost:5173)
@@ -250,7 +252,7 @@ Open your browser to:
   - **Request Body**:
     ```json
     {
-      "code": "def print_receipt():\n    print(\"Total\")"
+      "code": "def print_receipt(item_name, price, discount_rate):\n    final_price = price - (price * discount_rate)\n    print(\"Item:\", item_name, \"Final Price:\", round(final_price, 2))"
     }
     ```
   - **Response**:
@@ -259,11 +261,26 @@ Open your browser to:
       "status": "correct",
       "challenge_id": "py-receipt-unclosed-paren",
       "title": "The Mystery of the Silent Receipt",
-      "feedback": "Outstanding deduction! You closed the parenthesis on line 2, resolving the SyntaxError.",
-      "is_correct": true,
-      "submitted_code": "def print_receipt():\n    print(\"Total\")"
+      "feedback": "Outstanding detective work! Your fix resolved the defect and parsed cleanly.",
+      "passed": true
     }
     ```
+
+- **`GET /api/challenges/{challenge_id}/solution`**
+  - Unlocks the canonical solution, bug explanation, fix rationale, and relatable real-world analogy.
+  - *Pedagogical note*: In the user interface, this operation is gated until all forensic clues have been revealed to encourage independent learning.
+  - **Response**:
+    ```json
+    {
+      "challenge_id": "py-receipt-unclosed-paren",
+      "title": "The Mystery of the Silent Receipt",
+      "canonical_solution": "def print_receipt(item_name, price, discount_rate):\n    final_price = price - (price * discount_rate)\n    print(\"Item:\", item_name, \"Final Price:\", round(final_price, 2))",
+      "bug_explanation": "An unclosed opening parenthesis on line 3 prevents Python from completing the print() statement.",
+      "fix_rationale": "Appending the matching closing delimiter ')' completes the outer print() invocation.",
+      "real_world_analogy": "Like opening a pair of quotation marks in a sentence and forgetting to close them before the period."
+    }
+    ```
+
 
 ---
 
