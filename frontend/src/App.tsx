@@ -4,8 +4,24 @@ import {
   AnalyzeResponse,
   SubmissionStatus,
   HealthResponse,
+  AppMode,
+  ChallengeSummary,
+  ChallengeDetail,
+  VerifyChallengeResponse,
 } from './types';
-import { analyzeCode, checkHealth } from './api';
+import {
+  analyzeCode,
+  checkHealth,
+  fetchChallenges,
+  fetchNextChallenge,
+  fetchChallengeById,
+  verifyChallengeSolution,
+} from './api';
+import {
+  loadSolvedChallenges,
+  saveSolvedChallenge,
+  clearDetectiveProgress,
+} from './progress';
 import './App.css';
 
 interface SampleSnippet {
@@ -106,6 +122,144 @@ export const App: React.FC = () => {
       clearInterval(interval);
     };
   }, []);
+
+  // Mode selection state (default 'code')
+  const [appMode, setAppMode] = useState<AppMode>('code');
+
+  // Detective Mode state
+  const [detectiveLang, setDetectiveLang] = useState<SupportedLanguage>('python');
+  const [challengesCatalog, setChallengesCatalog] = useState<ChallengeSummary[]>([]);
+  const [currentChallenge, setCurrentChallenge] = useState<ChallengeDetail | null>(null);
+  const [detectiveCode, setDetectiveCode] = useState<string>('');
+  const [detectiveLoading, setDetectiveLoading] = useState<boolean>(false);
+  const [detectiveError, setDetectiveError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [isFetchingHint, setIsFetchingHint] = useState<boolean>(false);
+  const [verificationResult, setVerificationResult] = useState<VerifyChallengeResponse | null>(null);
+  const [solvedChallenges, setSolvedChallenges] = useState<string[]>(() => loadSolvedChallenges());
+  const [challengeSeed, setChallengeSeed] = useState<number>(0);
+  const detectiveReqIdRef = React.useRef<number>(0);
+
+  // Load challenge detail by ID or next seed
+  const loadChallengesForLanguage = async (
+    lang: SupportedLanguage,
+    targetId?: string,
+    seedIndex: number = 0
+  ) => {
+    const reqId = ++detectiveReqIdRef.current;
+    setDetectiveLoading(true);
+    setDetectiveError(null);
+    setVerificationResult(null);
+
+    try {
+      const summaries = await fetchChallenges(lang);
+      if (reqId !== detectiveReqIdRef.current) return;
+      setChallengesCatalog(summaries);
+
+      let detail: ChallengeDetail;
+      if (targetId) {
+        detail = await fetchChallengeById(targetId, 0);
+      } else {
+        detail = await fetchNextChallenge(lang, undefined, seedIndex);
+      }
+
+      if (reqId !== detectiveReqIdRef.current) return;
+      setCurrentChallenge(detail);
+      setDetectiveCode(detail.buggy_code);
+      setChallengeSeed(seedIndex);
+      setDetectiveLoading(false);
+    } catch (err: unknown) {
+      if (reqId !== detectiveReqIdRef.current) return;
+      const msg = err instanceof Error ? err.message : 'Failed to retrieve challenge from server.';
+      setDetectiveError(msg);
+      setDetectiveLoading(false);
+    }
+  };
+
+  // Switch Detective Language
+  const handleDetectiveLanguageChange = (newLang: SupportedLanguage) => {
+    setDetectiveLang(newLang);
+    loadChallengesForLanguage(newLang, undefined, 0);
+  };
+
+  // Select a specific challenge from Dossier
+  const handleSelectChallenge = (id: string) => {
+    if (!id || id === currentChallenge?.id || detectiveLoading) return;
+    loadChallengesForLanguage(detectiveLang, id, challengeSeed);
+  };
+
+  // Advance to Next Case
+  const handleNextChallenge = () => {
+    if (detectiveLoading || isVerifying) return;
+    const nextSeed = challengeSeed + 1;
+    loadChallengesForLanguage(detectiveLang, undefined, nextSeed);
+  };
+
+  // Reveal next progressive hint
+  const handleRevealNextHint = async () => {
+    if (!currentChallenge || isFetchingHint) return;
+    const nextLevel = currentChallenge.hint_level + 1;
+    if (nextLevel > currentChallenge.total_hints) return;
+
+    setIsFetchingHint(true);
+    try {
+      const updated = await fetchChallengeById(currentChallenge.id, nextLevel);
+      setCurrentChallenge(updated);
+    } catch {
+      // Keep existing state if hint fetch fails
+    } finally {
+      setIsFetchingHint(false);
+    }
+  };
+
+  // Reset editor back to buggy code
+  const handleResetDetectiveCode = () => {
+    if (currentChallenge) {
+      setDetectiveCode(currentChallenge.buggy_code);
+      setVerificationResult(null);
+    }
+  };
+
+  // Submit fix for verification
+  const handleSubmitSolution = async () => {
+    if (!currentChallenge || isVerifying || detectiveLoading) return;
+    if (!detectiveCode.trim()) return;
+
+    setIsVerifying(true);
+    try {
+      const res = await verifyChallengeSolution(currentChallenge.id, detectiveCode);
+      setVerificationResult(res);
+      if (res.passed) {
+        const updated = saveSolvedChallenge(currentChallenge.id);
+        setSolvedChallenges(updated);
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Verification request failed';
+      setVerificationResult({
+        challenge_id: currentChallenge.id,
+        status: 'ambiguous',
+        passed: false,
+        message: 'Verification Error',
+        feedback: errorMsg,
+        details: 'Unable to communicate with verification engine.',
+      });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Reset progress
+  const handleClearProgress = () => {
+    clearDetectiveProgress();
+    setSolvedChallenges([]);
+  };
+
+  // When switching to Detective Mode, auto-load if not loaded yet
+  useEffect(() => {
+    if (appMode === 'detective' && !currentChallenge && !detectiveLoading && !detectiveError) {
+      loadChallengesForLanguage(detectiveLang, undefined, 0);
+    }
+  }, [appMode]);
 
   const handleLanguageChange = (newLang: SupportedLanguage) => {
     setLanguage(newLang);
@@ -265,8 +419,43 @@ export const App: React.FC = () => {
             </div>
           </div>
 
+          {/* Mode Switcher */}
+          <div className="mode-switcher-container">
+            <div className="mode-segmented-control" role="tablist" aria-label="Application Mode">
+              <button
+                type="button"
+                id="mode-switch-code"
+                className={`mode-btn ${appMode === 'code' ? 'active' : ''}`}
+                onClick={() => setAppMode('code')}
+                role="tab"
+                aria-selected={appMode === 'code'}
+              >
+                <span className="mode-icon">💻</span>
+                <span>Code Mode</span>
+              </button>
+              <button
+                type="button"
+                id="mode-switch-detective"
+                className={`mode-btn ${appMode === 'detective' ? 'active' : ''}`}
+                onClick={() => setAppMode('detective')}
+                role="tab"
+                aria-selected={appMode === 'detective'}
+              >
+                <span className="mode-icon">🕵️</span>
+                <span>Detective Mode</span>
+                {solvedChallenges.length > 0 && (
+                  <span className="mode-solved-count" id="mode-solved-count" title={`${solvedChallenges.length} cases solved`}>
+                    {solvedChallenges.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
           <div className="header-meta">
-            <span className="milestone-badge">Milestone 2.1 · Guided UX</span>
+            <span className="milestone-badge">
+              {appMode === 'code' ? 'Milestone 2.1 · Guided UX' : 'Phase 3 · Detective Mode'}
+            </span>
             <div
               className="backend-status-pill"
               title={
@@ -293,12 +482,14 @@ export const App: React.FC = () => {
 
       {/* Main Workspace */}
       <main className="app-main">
-        {/* Hero Banner */}
-        <section className="hero-banner">
-          <div className="hero-pill">
-            <span role="img" aria-label="compass">🧭</span>
-            <span>Step-by-Step Guided Debugging Tutor</span>
-          </div>
+        {appMode === 'code' && (
+          <>
+            {/* Hero Banner */}
+            <section className="hero-banner">
+              <div className="hero-pill">
+                <span role="img" aria-label="compass">🧭</span>
+                <span>Step-by-Step Guided Debugging Tutor</span>
+              </div>
           <h2 className="hero-title">
             Turn Frustrating Bugs Into{' '}
             <span className="hero-highlight">Aha! Moments</span>
@@ -1043,7 +1234,391 @@ export const App: React.FC = () => {
             )}
           </div>
         </div>
-      </main>
+      </>
+    )}
+
+    {/* ========================================================================= */}
+    {/* Detective Mode Workspace */}
+    {/* ========================================================================= */}
+    {appMode === 'detective' && (
+      <>
+        {/* Detective Hero Banner */}
+        <section className="hero-banner detective-hero">
+          <div className="hero-pill detective-pill">
+            <span role="img" aria-label="detective">🕵️</span>
+            <span>Detective Challenge Engine · Interactive Debugging Mysteries</span>
+          </div>
+          <h2 className="hero-title">
+            Solve the Glitch, <span className="hero-highlight">Close the Case</span>
+          </h2>
+          <p className="hero-subtitle">
+            Investigate realistic code defects, request progressive forensic clues, and submit your verified fix
+            without spoiling the solution.
+          </p>
+          <div className="dossier-stats-bar">
+            <span className="dossier-stat-pill" id="detective-dossier-stats">
+              <strong>Case Dossier:</strong> {solvedChallenges.length} of {challengesCatalog.length || 8} Solved
+            </span>
+            {solvedChallenges.length > 0 && (
+              <button
+                type="button"
+                className="btn-text-link"
+                id="clear-progress-btn"
+                style={{ fontSize: '0.75rem', opacity: 0.7 }}
+                onClick={handleClearProgress}
+              >
+                Reset Progress
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* Two-Column Detective Layout */}
+        <div className="workspace-grid detective-grid">
+          {/* Left Column: Case Briefing & Progressive Clues */}
+          <div className="panel-card" id="detective-case-panel">
+            <div className="panel-header">
+              <div className="panel-title-group">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <h3 className="panel-title">Case Briefing</h3>
+              </div>
+
+              {/* Language Selector */}
+              <div className="language-selector-group">
+                <span className="lang-selector-label">Language:</span>
+                <div className="segmented-control" role="radiogroup" aria-label="Select Detective Mode Language">
+                  <button
+                    type="button"
+                    id="detective-select-python"
+                    className={`segment-btn ${detectiveLang === 'python' ? 'active' : ''}`}
+                    onClick={() => handleDetectiveLanguageChange('python')}
+                    aria-checked={detectiveLang === 'python'}
+                    role="radio"
+                  >
+                    <span className="lang-icon">🐍</span>
+                    <span>Python</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="detective-select-java"
+                    className={`segment-btn ${detectiveLang === 'java' ? 'active' : ''}`}
+                    onClick={() => handleDetectiveLanguageChange('java')}
+                    aria-checked={detectiveLang === 'java'}
+                    role="radio"
+                  >
+                    <span className="lang-icon">☕</span>
+                    <span>Java</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Case Selector Dropdown */}
+            {challengesCatalog.length > 0 && (
+              <div className="case-selector-bar">
+                <label htmlFor="detective-case-selector" className="case-selector-label">
+                  <span>Active Mystery:</span>
+                </label>
+                <select
+                  id="detective-case-selector"
+                  className="case-selector-dropdown"
+                  value={currentChallenge?.id || ''}
+                  onChange={(e) => handleSelectChallenge(e.target.value)}
+                  aria-label="Select Active Mystery Case"
+                >
+                  {challengesCatalog.map((c) => {
+                    const isSolved = solvedChallenges.includes(c.id);
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {isSolved ? '✓ ' : ''}{c.title} ({c.difficulty})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            {/* Loading State */}
+            {detectiveLoading && (
+              <div className="empty-state" id="detective-loading">
+                <div className="spinner" style={{ width: '32px', height: '32px', borderWidth: '3px' }}></div>
+                <h4 className="empty-state-title" style={{ marginTop: '1rem' }}>Loading Case File...</h4>
+                <p className="empty-state-desc">Retrieving mystery briefing from the Detective Challenge Engine.</p>
+              </div>
+            )}
+
+            {/* Error Alert */}
+            {detectiveError && !detectiveLoading && (
+              <div className="alert-box alert-error" id="detective-error-alert">
+                <span className="alert-icon">⚡</span>
+                <div>
+                  <strong>Case Retrieval Error:</strong> {detectiveError}
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <button
+                      type="button"
+                      id="detective-retry-btn"
+                      className="btn-secondary"
+                      style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
+                      onClick={() => loadChallengesForLanguage(detectiveLang)}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Case Content */}
+            {!detectiveLoading && currentChallenge && (
+              <>
+                <article className="result-card detective-dossier-card" id="detective-case-card">
+                  <div className="result-card-header">
+                    <div className="step-card-heading">
+                      <span className="step-indicator-tag">Mystery Case</span>
+                      <h4 className="detective-case-title-text" id="detective-case-title">
+                        {currentChallenge.title}
+                      </h4>
+                    </div>
+                    {solvedChallenges.includes(currentChallenge.id) ? (
+                      <span className="badge-solved" id="detective-solved-badge">
+                        ✓ Case Closed
+                      </span>
+                    ) : (
+                      <span className="badge-open" id="detective-open-badge">
+                        🔍 Open Investigation
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="result-card-body">
+                    <div className="diagnostic-headline">
+                      <span className="diagnostic-category-tag" id="detective-category-badge">
+                        {currentChallenge.category}
+                      </span>
+                      <span className="diagnostic-severity-tag" id="detective-difficulty-badge">
+                        Difficulty: {currentChallenge.difficulty}
+                      </span>
+                    </div>
+
+                    <div className="scenario-briefing-box">
+                      <span className="scenario-briefing-label">🚨 Incident Report:</span>
+                      <p className="beginner-explanation-text" id="detective-case-scenario">
+                        {currentChallenge.scenario}
+                      </p>
+                    </div>
+
+                    <div className="expected-behavior-box">
+                      <div className="actionable-label">
+                        <span role="img" aria-label="target">🎯</span>
+                        <span>Expected Behavior</span>
+                      </div>
+                      <p className="actionable-text" id="detective-expected-behavior">
+                        {currentChallenge.expected_behavior}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+
+                {/* Progressive Clues Section */}
+                <article className="result-card card-hint detective-clues-card" id="detective-clues-section">
+                  <div className="result-card-header">
+                    <div className="step-card-heading">
+                      <span className="step-indicator-tag">Forensic Clues</span>
+                      <span>
+                        Investigation Clues ({currentChallenge.unlocked_hints.length} of {currentChallenge.total_hints})
+                      </span>
+                    </div>
+                    <span role="img" aria-label="magnifier">🔎</span>
+                  </div>
+
+                  <div className="result-card-body">
+                    <div className="clues-action-row">
+                      <button
+                        type="button"
+                        id="detective-hint-button"
+                        className="btn-secondary hint-reveal-btn"
+                        onClick={handleRevealNextHint}
+                        disabled={
+                          isFetchingHint ||
+                          currentChallenge.unlocked_hints.length >= currentChallenge.total_hints
+                        }
+                      >
+                        {isFetchingHint ? (
+                          <>
+                            <span className="spinner"></span>
+                            <span>Unlocking Clue...</span>
+                          </>
+                        ) : currentChallenge.unlocked_hints.length >= currentChallenge.total_hints ? (
+                          <>
+                            <span>✓ All {currentChallenge.total_hints} Clues Revealed</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>💡 Reveal Next Clue ({currentChallenge.unlocked_hints.length + 1} of {currentChallenge.total_hints})</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="clues-list-container" id="detective-hints-list">
+                      {currentChallenge.unlocked_hints.length === 0 ? (
+                        <div className="clue-empty-prompt">
+                          <span>🕵️ No clues unlocked yet. Inspect the crime scene on the right, or request a clue if you are stuck.</span>
+                        </div>
+                      ) : (
+                        currentChallenge.unlocked_hints.map((hint, idx) => (
+                          <div
+                            key={idx}
+                            className="clue-item-card"
+                            id={`detective-hint-item-${idx}`}
+                          >
+                            <div className="clue-item-header">
+                              <span className="clue-number-badge">Clue #{idx + 1}</span>
+                            </div>
+                            <p className="clue-item-text">{hint}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </article>
+              </>
+            )}
+          </div>
+
+          {/* Right Column: Crime Scene Code Editor & Verification */}
+          <div className="panel-card" id="detective-editor-panel">
+            <div className="panel-header">
+              <div className="panel-title-group">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="16 18 22 12 16 6"></polyline>
+                  <polyline points="8 6 2 12 8 18"></polyline>
+                </svg>
+                <h3 className="panel-title">Crime Scene: Buggy Source Code</h3>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  id="detective-reset-code-btn"
+                  className="btn-secondary"
+                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
+                  onClick={handleResetDetectiveCode}
+                  title="Reset editor back to the challenge's initial buggy code"
+                  disabled={detectiveLoading || !currentChallenge}
+                >
+                  ↺ Reset to Buggy Code
+                </button>
+              </div>
+            </div>
+
+            {/* Editor */}
+            <div className="editor-wrapper">
+              <div className="editor-bar">
+                <span className="editor-tag">{detectiveLang}</span>
+                <span>
+                  {detectiveCode.split('\n').length} lines · {detectiveCode.length} chars
+                </span>
+              </div>
+              <textarea
+                id="detective-code-input"
+                className="code-textarea"
+                placeholder="# Investigate and patch the bug here..."
+                value={detectiveCode}
+                onChange={(e) => setDetectiveCode(e.target.value)}
+                spellCheck={false}
+                rows={12}
+                disabled={detectiveLoading}
+              />
+            </div>
+
+            {/* Submit & Next Actions */}
+            <div className="action-row">
+              <button
+                type="button"
+                id="detective-next-button"
+                className="btn-secondary"
+                onClick={handleNextChallenge}
+                disabled={detectiveLoading || isVerifying}
+              >
+                <span>Next Case →</span>
+              </button>
+
+              <button
+                type="button"
+                id="detective-submit-button"
+                className="btn-primary"
+                onClick={handleSubmitSolution}
+                disabled={isVerifying || detectiveLoading || !detectiveCode.trim()}
+              >
+                {isVerifying ? (
+                  <>
+                    <span className="spinner"></span>
+                    <span>Verifying Fix...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <span>Submit Fix for Verification</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Verification Feedback Banner */}
+            {verificationResult && (
+              <div
+                className={`detective-feedback-banner feedback-banner-${verificationResult.status}`}
+                id="detective-feedback-banner"
+              >
+                <div className="feedback-banner-header">
+                  <span className="feedback-status-badge">
+                    {verificationResult.status === 'correct'
+                      ? '🎉 Case Resolved!'
+                      : verificationResult.status === 'incorrect'
+                      ? '⚠️ Defect Still Present'
+                      : '🔍 Inconclusive Verification'}
+                  </span>
+                  <span className="feedback-outcome-text" id="detective-feedback-message">
+                    {verificationResult.message}
+                  </span>
+                </div>
+
+                <p className="feedback-pedagogical-text" id="detective-feedback-text">
+                  {verificationResult.feedback}
+                </p>
+
+                {verificationResult.details && (
+                  <div className="feedback-details-box" id="detective-feedback-details">
+                    <strong>Detail clue:</strong> <code>{verificationResult.details}</code>
+                  </div>
+                )}
+
+                {verificationResult.passed && (
+                  <div className="feedback-next-prompt">
+                    <span>Outstanding work detective! Case closed. Ready for the next mystery?</span>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+                      onClick={handleNextChallenge}
+                    >
+                      Advance to Next Case →
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    )}
+  </main>
 
       {/* Footer */}
       <footer className="app-footer">

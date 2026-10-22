@@ -43,3 +43,38 @@ export type SubmissionStatus =
   | 'success'
   | 'empty_input'
   | 'connection_error';
+
+export type AppMode = 'code' | 'detective';
+
+export interface ChallengeSummary {
+  id: string;
+  title: string;
+  language: SupportedLanguage;
+  difficulty: string;
+  category: string;
+  scenario: string;
+}
+
+export interface ChallengeDetail {
+  id: string;
+  title: string;
+  language: SupportedLanguage;
+  difficulty: string;
+  category: string;
+  scenario: string;
+  buggy_code: string;
+  expected_behavior: string;
+  total_hints: number;
+  unlocked_hints: string[];
+  hint_level: number;
+}
+
+export interface VerifyChallengeResponse {
+  challenge_id: string;
+  status: 'correct' | 'incorrect' | 'ambiguous';
+  passed: boolean;
+  message: string;
+  feedback: string;
+  details?: string | null;
+}
+
