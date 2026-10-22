@@ -8,6 +8,7 @@ import ast
 import re
 from typing import Dict, List, Optional, Tuple
 from app.engine.safe_evaluator import safe_infer_python_output
+from app.engine.explanations import get_explanation_details
 
 
 def _find_unclosed_delimiters(code: str) -> List[Tuple[str, int, int]]:
@@ -471,6 +472,8 @@ def analyze_python_snippet(code: str, error_message: Optional[str] = None) -> Di
             "expected_output": expected_output,
             "hint": hint,
             "practice_question": practice_q,
+            "real_world_analogy": get_explanation_details(error_category)[0],
+            "actionable_summary": get_explanation_details(error_category)[1],
             "confidence": confidence,
             "disclaimer": (
                 "Parsed statically using Python's built-in AST parser. "
@@ -598,6 +601,8 @@ def analyze_python_snippet(code: str, error_message: Optional[str] = None) -> Di
             "expected_output": "Runtime execution required to produce final output (code is not executed for safety).",
             "hint": f"What input value causes the runtime exception on line {tb_line or 1}? Can you add a guard clause beforehand?",
             "practice_question": practice_question,
+            "real_world_analogy": get_explanation_details(err_type)[0],
+            "actionable_summary": get_explanation_details(err_type)[1],
             "confidence": "high",
             "disclaimer": (
                 "Parsed statically using Python AST. Runtime trace was diagnosed analytically. "
@@ -645,6 +650,8 @@ def analyze_python_snippet(code: str, error_message: Optional[str] = None) -> Di
             "What is the difference between a compile-time (syntax) error and a logical bug where "
             "the program runs without crashing but produces incorrect results?"
         ),
+        "real_world_analogy": get_explanation_details("None (Valid Code)")[0],
+        "actionable_summary": get_explanation_details("None (Valid Code)")[1],
         "confidence": "high",
         "disclaimer": (
             "Parsed statically using Python's built-in AST parser. "

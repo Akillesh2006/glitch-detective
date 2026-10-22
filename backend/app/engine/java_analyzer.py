@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import tempfile
 from typing import Dict, List, Optional, Tuple
+from app.engine.explanations import get_explanation_details
 
 
 def _sanitize_compiler_output(output: str, temp_dir: Optional[str] = None) -> str:
@@ -199,8 +200,22 @@ def _safe_infer_java_output(code: str) -> Optional[str]:
     return "None (this code snippet contains no console print statements)."
 
 
+def _enrich_java_response(result: Dict) -> Dict:
+    """Enrich a Java diagnostic response dictionary with analogies and actionable summaries."""
+    category = result.get("error_category")
+    analogy, actionable = get_explanation_details(category)
+    result["real_world_analogy"] = analogy
+    result["actionable_summary"] = actionable
+    return result
+
+
 def analyze_java_snippet(code: str, error_message: Optional[str] = None) -> Dict:
     """Deterministically analyze a Java code snippet."""
+    return _enrich_java_response(_analyze_java_snippet_internal(code, error_message))
+
+
+def _analyze_java_snippet_internal(code: str, error_message: Optional[str] = None) -> Dict:
+    """Internal deterministic analysis for Java code."""
     raw_lines = code.splitlines()
     line_count = len(raw_lines)
     preview_line_count = min(line_count, 3)

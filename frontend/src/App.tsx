@@ -678,6 +678,32 @@ export const App: React.FC = () => {
                           {result.root_cause}
                         </p>
 
+                        {/* Real-World Analogy */}
+                        {result.real_world_analogy && (
+                          <div className="analogy-callout-box" id="step-1-analogy">
+                            <div className="analogy-label">
+                              <span role="img" aria-label="analogy">💡</span>
+                              <span>Real-World Analogy</span>
+                            </div>
+                            <p className="analogy-text" id="step-1-analogy-text">
+                              {result.real_world_analogy}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Actionable Correction Summary */}
+                        {result.actionable_summary && (
+                          <div className="actionable-summary-box" id="step-1-actionable-summary">
+                            <div className="actionable-label">
+                              <span role="img" aria-label="target">🎯</span>
+                              <span>Action to Take</span>
+                            </div>
+                            <p className="actionable-text" id="step-1-actionable-text">
+                              {result.actionable_summary}
+                            </p>
+                          </div>
+                        )}
+
                         {/* Minimal highlighted evidence (line and pointer only) */}
                         {lineEvidence && lineEvidence.length > 0 && (
                           <div className="step-evidence-box" id="step-1-line-evidence">

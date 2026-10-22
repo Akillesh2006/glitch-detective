@@ -1316,3 +1316,65 @@
   font-size: 0.775rem;
   color: var(--text-dim);
 }
+
+/* Phase 1: Real-World Analogy & Actionable Summary */
+.analogy-callout-box {
+  margin-top: 0.85rem;
+  padding: 0.75rem 1rem;
+  background: rgba(99, 102, 241, 0.08);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.analogy-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.analogy-text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #e2e8f0;
+  margin: 0;
+  font-style: italic;
+}
+
+.actionable-summary-box {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(16, 185, 129, 0.08);
+  border-left: 3px solid var(--accent-emerald);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.actionable-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--accent-emerald);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.actionable-text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #e2e8f0;
+  margin: 0;
+  font-weight: 500;
+}
+

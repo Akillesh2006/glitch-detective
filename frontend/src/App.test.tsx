@@ -30,6 +30,8 @@ const mockDiagnosticResponse: AnalyzeResponse = {
   expected_output: 'Hello',
   hint: "Look at the opening parenthesis after print. Which character should close it?",
   practice_question: 'Why does Python require matching delimiters?',
+  real_world_analogy: 'Like opening quotation marks in a sentence but never closing them—the reader cannot tell where your quote ends.',
+  actionable_summary: 'Add the matching closing delimiter to complete the expression.',
   confidence: 'high',
   disclaimer: 'Parsed statically using Python AST. User code was never executed.',
   submitted_code_preview: 'print("Hello"',
@@ -80,6 +82,12 @@ describe('Milestone 2.1: Step-by-Step Guided Debugging UX', () => {
     expect(screen.getAllByText(/Line 1/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/An opening parenthesis '\(' starting on line 1 was never closed/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Line 1: print\("Hello"/i).length).toBeGreaterThan(0);
+
+    // Phase 1: Real-World Analogy and Actionable Summary in Step 1
+    expect(screen.getByText('Real-World Analogy')).toBeDefined();
+    expect(screen.getByText(/Like opening quotation marks in a sentence/i)).toBeDefined();
+    expect(screen.getByText('Action to Take')).toBeDefined();
+    expect(screen.getByText(/Add the matching closing delimiter/i)).toBeDefined();
 
     // Critical Requirement: Do NOT reveal corrected code or expected output in Step 1
     expect(screen.queryByText('Smallest appropriate correction:')).toBeNull();
@@ -325,5 +333,26 @@ describe('Milestone 2.1: Step-by-Step Guided Debugging UX', () => {
     expect(screen.getByText('Severity: None')).toBeDefined();
     expect(screen.getByText('Clean Syntax')).toBeDefined();
     expect(screen.queryByText('Severity: High')).toBeNull();
+  });
+
+  it('does not display analogy callout when real_world_analogy is absent or null', async () => {
+    (api.analyzeCode as any).mockResolvedValueOnce({
+      ...mockDiagnosticResponse,
+      real_world_analogy: null,
+      actionable_summary: null,
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByPlaceholderText(/Paste Python code snippet/i), {
+      target: { value: 'print("Hello"' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Analyze Code/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Diagnose the Issue')).toBeDefined();
+    });
+
+    expect(screen.queryByText('Real-World Analogy')).toBeNull();
+    expect(screen.queryByText('Action to Take')).toBeNull();
   });
 });

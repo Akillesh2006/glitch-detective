@@ -124,6 +124,14 @@ class AnalyzeResponse(BaseModel):
         ...,
         description="Conceptual follow-up question to solidify learning",
     )
+    real_world_analogy: Optional[str] = Field(
+        default=None,
+        description="Concise real-world analogy explaining why the concept matters",
+    )
+    actionable_summary: Optional[str] = Field(
+        default=None,
+        description="One-sentence actionable summary of how to correct the issue",
+    )
     confidence: str = Field(
         default="high",
         description="Diagnostic confidence: 'high', 'medium', 'low', 'ambiguous'",

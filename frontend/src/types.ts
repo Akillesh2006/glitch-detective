@@ -24,6 +24,8 @@ export interface AnalyzeResponse {
   fix_explanation?: string | null;
   expected_output?: string | null;
   hint?: string | null;
+  real_world_analogy?: string | null;
+  actionable_summary?: string | null;
   confidence?: string | null;
 }
 
