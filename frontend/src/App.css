@@ -28,6 +28,31 @@
   gap: 1rem;
 }
 
+@media (max-width: 680px) {
+  .header-container {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .brand-section {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .mode-switcher-container {
+    order: 2;
+  }
+
+  .header-meta {
+    order: 3;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
 .brand-section {
   display: flex;
   align-items: center;

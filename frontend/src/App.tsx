@@ -73,6 +73,8 @@ const EXTENDED_SAMPLES: SampleSnippet[] = [
   },
 ];
 
+const TOTAL_DOSSIER_CHALLENGES = 8;
+
 export const App: React.FC = () => {
   const [language, setLanguage] = useState<SupportedLanguage>('python');
   const [code, setCode] = useState<string>('');
@@ -157,16 +159,26 @@ export const App: React.FC = () => {
       setChallengesCatalog(summaries);
 
       let detail: ChallengeDetail;
+      let effectiveSeed = seedIndex;
+
       if (targetId) {
         detail = await fetchChallengeById(targetId, 0);
+        const foundIndex = summaries.findIndex((c) => c.id === targetId);
+        if (foundIndex >= 0) {
+          effectiveSeed = foundIndex;
+        }
       } else {
         detail = await fetchNextChallenge(lang, undefined, seedIndex);
+        const foundIndex = summaries.findIndex((c) => c.id === detail.id);
+        if (foundIndex >= 0) {
+          effectiveSeed = foundIndex;
+        }
       }
 
       if (reqId !== detectiveReqIdRef.current) return;
       setCurrentChallenge(detail);
       setDetectiveCode(detail.buggy_code);
-      setChallengeSeed(seedIndex);
+      setChallengeSeed(effectiveSeed);
       setDetectiveLoading(false);
     } catch (err: unknown) {
       if (reqId !== detectiveReqIdRef.current) return;
@@ -185,13 +197,16 @@ export const App: React.FC = () => {
   // Select a specific challenge from Dossier
   const handleSelectChallenge = (id: string) => {
     if (!id || id === currentChallenge?.id || detectiveLoading) return;
-    loadChallengesForLanguage(detectiveLang, id, challengeSeed);
+    const foundIndex = challengesCatalog.findIndex((c) => c.id === id);
+    const targetSeed = foundIndex >= 0 ? foundIndex : challengeSeed;
+    loadChallengesForLanguage(detectiveLang, id, targetSeed);
   };
 
   // Advance to Next Case
   const handleNextChallenge = () => {
     if (detectiveLoading || isVerifying) return;
-    const nextSeed = challengeSeed + 1;
+    const catalogLength = challengesCatalog.length;
+    const nextSeed = catalogLength > 0 ? (challengeSeed + 1) % catalogLength : challengeSeed + 1;
     loadChallengesForLanguage(detectiveLang, undefined, nextSeed);
   };
 
@@ -444,8 +459,12 @@ export const App: React.FC = () => {
                 <span className="mode-icon">🕵️</span>
                 <span>Detective Mode</span>
                 {solvedChallenges.length > 0 && (
-                  <span className="mode-solved-count" id="mode-solved-count" title={`${solvedChallenges.length} cases solved`}>
-                    {solvedChallenges.length}
+                  <span
+                    className="mode-solved-count"
+                    id="mode-solved-count"
+                    title={`${Math.min(solvedChallenges.length, TOTAL_DOSSIER_CHALLENGES)} of ${TOTAL_DOSSIER_CHALLENGES} cases solved`}
+                  >
+                    {Math.min(solvedChallenges.length, TOTAL_DOSSIER_CHALLENGES)}
                   </span>
                 )}
               </button>
@@ -1257,7 +1276,7 @@ export const App: React.FC = () => {
           </p>
           <div className="dossier-stats-bar">
             <span className="dossier-stat-pill" id="detective-dossier-stats">
-              <strong>Case Dossier:</strong> {solvedChallenges.length} of {challengesCatalog.length || 8} Solved
+              <strong>Case Dossier:</strong> {Math.min(solvedChallenges.length, TOTAL_DOSSIER_CHALLENGES)} of {TOTAL_DOSSIER_CHALLENGES} Solved
             </span>
             {solvedChallenges.length > 0 && (
               <button

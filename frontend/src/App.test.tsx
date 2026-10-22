@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from './App';
 import * as api from './api';
-import { AnalyzeResponse } from './types';
+import { AnalyzeResponse, ChallengeDetail } from './types';
 import { clearDetectiveProgress } from './progress';
 
 // Mock API client methods
@@ -372,6 +372,24 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
     scenario: 'A retail register discount script crashed right when printing the final bill.',
   };
 
+  const mockPythonSummary2 = {
+    id: 'py-traffic-missing-colon',
+    title: 'The Mystery of the Highway Gate',
+    language: 'python' as const,
+    difficulty: 'beginner',
+    category: 'SyntaxError: Missing Colon',
+    scenario: 'An automated toll gate speed camera script stopped evaluating incoming vehicles.',
+  };
+
+  const mockPythonSummary3 = {
+    id: 'py-roster-indentation',
+    title: 'The Mystery of the Misplaced Student',
+    language: 'python' as const,
+    difficulty: 'beginner',
+    category: 'IndentationError',
+    scenario: 'A school gradebook export script fails to run due to misaligned loop body.',
+  };
+
   const mockJavaSummary = {
     id: 'java-greeter-missing-semicolon',
     title: 'The Mystery of the Truncated Greeting',
@@ -390,6 +408,34 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
     scenario: 'A retail register discount script crashed right when printing the final bill.',
     buggy_code: 'def print_receipt():\n    print("Total"',
     expected_behavior: 'The receipt prints the final price cleanly without syntax error.',
+    total_hints: 2,
+    unlocked_hints: [] as string[],
+    hint_level: 0,
+  };
+
+  const mockPythonDetail2 = {
+    id: 'py-traffic-missing-colon',
+    title: 'The Mystery of the Highway Gate',
+    language: 'python' as const,
+    difficulty: 'beginner',
+    category: 'SyntaxError: Missing Colon',
+    scenario: 'An automated toll gate speed camera script stopped evaluating incoming vehicles.',
+    buggy_code: 'def check_speed(speed):\n    if speed > 60\n        return "Warning"',
+    expected_behavior: 'Add colon to conditional statement.',
+    total_hints: 2,
+    unlocked_hints: [] as string[],
+    hint_level: 0,
+  };
+
+  const mockPythonDetail3 = {
+    id: 'py-roster-indentation',
+    title: 'The Mystery of the Misplaced Student',
+    language: 'python' as const,
+    difficulty: 'beginner',
+    category: 'IndentationError',
+    scenario: 'A school gradebook export script fails to run due to misaligned loop body.',
+    buggy_code: 'for s in students:\nprint(s)',
+    expected_behavior: 'Indent the loop body.',
     total_hints: 2,
     unlocked_hints: [] as string[],
     hint_level: 0,
@@ -424,16 +470,22 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
 
     (api.fetchChallenges as any).mockImplementation(async (lang?: string) => {
       if (lang === 'java') return [mockJavaSummary];
-      return [mockPythonSummary];
+      return [mockPythonSummary, mockPythonSummary2, mockPythonSummary3];
     });
 
-    (api.fetchNextChallenge as any).mockImplementation(async (lang?: string) => {
+    (api.fetchNextChallenge as any).mockImplementation(async (lang?: string, _diff?: string, seed?: number) => {
       if (lang === 'java') return mockJavaDetail;
-      return mockPythonDetail;
+      const pyList = [mockPythonDetail, mockPythonDetail2, mockPythonDetail3];
+      const index = seed !== undefined ? seed % pyList.length : 0;
+      return pyList[index];
     });
 
     (api.fetchChallengeById as any).mockImplementation(async (id: string, hintLevel: number) => {
-      const base = id === 'java-greeter-missing-semicolon' ? mockJavaDetail : mockPythonDetail;
+      let base: ChallengeDetail = mockPythonDetail;
+      if (id === 'java-greeter-missing-semicolon') base = mockJavaDetail;
+      else if (id === 'py-traffic-missing-colon') base = mockPythonDetail2;
+      else if (id === 'py-roster-indentation') base = mockPythonDetail3;
+
       const sampleHints = [
         'Examine the print statement line carefully.',
         'Count open and closing parentheses to balance the expression.',
@@ -730,6 +782,109 @@ describe('Phase 3: Detective Mode UX & Challenge Engine Integration', () => {
     expect(screen.queryByText(/canonical_solutions/i)).toBeNull();
     expect(screen.queryByText(/solution_code/i)).toBeNull();
     expect(screen.queryByText(/canonical/i)).toBeNull();
+  });
+
+  it('correctly tracks and displays dossier solved count across both Python and Java cases', async () => {
+    (api.verifyChallengeSolution as any)
+      .mockResolvedValueOnce({
+        challenge_id: 'py-receipt-unclosed-paren',
+        status: 'correct',
+        passed: true,
+        message: 'Case Resolved!',
+        feedback: 'Parenthesis balanced.',
+      })
+      .mockResolvedValueOnce({
+        challenge_id: 'java-greeter-missing-semicolon',
+        status: 'correct',
+        passed: true,
+        message: 'Case Resolved!',
+        feedback: 'Semicolon added.',
+      });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: /Detective Mode/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
+    });
+
+    // Initial state: 0 of 8 Solved
+    expect(screen.getByText(/0 of 8 Solved/i)).toBeDefined();
+
+    // Submit correct Python fix
+    fireEvent.click(screen.getByRole('button', { name: /Submit Fix for Verification/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/1 of 8 Solved/i)).toBeDefined();
+    });
+
+    // Switch to Java and submit correct Java fix
+    fireEvent.click(screen.getByRole('radio', { name: /Java/i }));
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Truncated Greeting')).toBeDefined();
+    });
+    // Count remains 1 of 8 Solved while viewing Java before submitting
+    expect(screen.getByText(/1 of 8 Solved/i)).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: /Submit Fix for Verification/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/2 of 8 Solved/i)).toBeDefined();
+    });
+
+    // Verify localStorage has both IDs
+    const saved = JSON.parse(localStorage.getItem('glitch_detective_dossier_v1') || '[]');
+    expect(saved).toEqual(['py-receipt-unclosed-paren', 'java-greeter-missing-semicolon']);
+  });
+
+  it('synchronizes manual case dropdown selection with subsequent Next Case navigation', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: /Detective Mode/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
+    });
+
+    // Manually select second Python mystery ('py-traffic-missing-colon') from dropdown
+    const selector = screen.getByLabelText(/Select Active Mystery Case/i);
+    fireEvent.change(selector, { target: { value: 'py-traffic-missing-colon' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Highway Gate')).toBeDefined();
+    });
+
+    // Press Next Case - should advance to third mystery ('py-roster-indentation', seed index 2)
+    const nextBtn = screen.getByRole('button', { name: /Next Case →/i });
+    fireEvent.click(nextBtn);
+
+    await waitFor(() => {
+      expect(api.fetchNextChallenge).toHaveBeenCalledWith('python', undefined, 2);
+      expect(screen.getByText('The Mystery of the Misplaced Student')).toBeDefined();
+    });
+  });
+
+  it('wraps around to the first challenge when Next Case is pressed on the last challenge', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: /Detective Mode/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
+    });
+
+    // Jump to the last Python challenge ('py-roster-indentation', index 2)
+    const selector = screen.getByLabelText(/Select Active Mystery Case/i);
+    fireEvent.change(selector, { target: { value: 'py-roster-indentation' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('The Mystery of the Misplaced Student')).toBeDefined();
+    });
+
+    // Press Next Case - should wrap around to index 0
+    const nextBtn = screen.getByRole('button', { name: /Next Case →/i });
+    fireEvent.click(nextBtn);
+
+    await waitFor(() => {
+      expect(api.fetchNextChallenge).toHaveBeenCalledWith('python', undefined, 0);
+      expect(screen.getByText('The Mystery of the Silent Receipt')).toBeDefined();
+    });
   });
 });
 
