@@ -163,3 +163,73 @@ class HealthResponse(BaseModel):
         default=["python", "java"],
         description="List of supported programming languages",
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Detective Mode Challenge Schemas
+# ---------------------------------------------------------------------------
+
+class ChallengeDifficulty(str, Enum):
+    """Supported difficulty tiers for debugging mysteries."""
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+
+
+class ChallengeSummary(BaseModel):
+    """Public summary metadata for challenge catalog browsing."""
+    id: str = Field(..., description="Unique stable challenge identifier")
+    title: str = Field(..., description="Engaging mystery case title")
+    language: SupportedLanguage = Field(..., description="Programming language")
+    difficulty: str = Field(default="beginner", description="Difficulty tier")
+    category: str = Field(..., description="Target defect category")
+    scenario: str = Field(..., description="Short real-world scenario briefing")
+
+
+class ChallengeDetail(BaseModel):
+    """Public challenge details for solving. Conceals canonical solutions."""
+    id: str = Field(..., description="Unique stable challenge identifier")
+    title: str = Field(..., description="Engaging mystery case title")
+    language: SupportedLanguage = Field(..., description="Programming language")
+    difficulty: str = Field(default="beginner", description="Difficulty tier")
+    category: str = Field(..., description="Target defect category")
+    scenario: str = Field(..., description="Short real-world scenario briefing")
+    buggy_code: str = Field(..., description="Source code containing the defect")
+    expected_behavior: str = Field(..., description="Description of intended behavior or output")
+    total_hints: int = Field(..., description="Total progressive hints available")
+    unlocked_hints: List[str] = Field(default_factory=list, description="List of currently revealed hints")
+    hint_level: int = Field(default=0, description="Highest hint level unlocked so far")
+
+
+class VerifyChallengeRequest(BaseModel):
+    """Payload for submitting a candidate solution to a challenge."""
+    challenge_id: Optional[str] = Field(
+        default=None,
+        description="Optional challenge ID if not provided in the route path",
+    )
+    code: str = Field(
+        ...,
+        min_length=1,
+        max_length=20000,
+        description="Learner's proposed correction code",
+    )
+
+    @field_validator("code")
+    @classmethod
+    def validate_code_not_blank(cls, v: str) -> str:
+        if "\x00" in v:
+            raise ValueError("The code field cannot contain null bytes.")
+        if not v.strip():
+            raise ValueError("The code field cannot be empty or contain only whitespace.")
+        return v
+
+
+class VerifyChallengeResponse(BaseModel):
+    """Result of evaluating a proposed correction against a challenge."""
+    challenge_id: str = Field(..., description="Target challenge identifier")
+    status: str = Field(..., description="'correct', 'incorrect', or 'ambiguous'")
+    passed: bool = Field(..., description="True if the challenge was successfully resolved")
+    message: str = Field(..., description="Short outcome banner")
+    feedback: str = Field(..., description="Helpful, non-spoiling pedagogical feedback")
+    details: Optional[str] = Field(default=None, description="Additional context or syntax clues")
+

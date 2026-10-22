@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.health import router as health_router
 from app.routes.analyze import router as analyze_router
+from app.routes.challenges import router as challenges_router
 
 app = FastAPI(
     title="Glitch Detective API",
@@ -34,11 +35,13 @@ app.add_middleware(
 # Register route modules under /api (primary public API surface)
 app.include_router(health_router, prefix="/api")
 app.include_router(analyze_router, prefix="/api")
+app.include_router(challenges_router, prefix="/api")
 
 # Also register route aliases without /api prefix so requests succeed whether
 # a serverless gateway preserves or strips the /api prefix
 app.include_router(health_router, prefix="", include_in_schema=False)
 app.include_router(analyze_router, prefix="", include_in_schema=False)
+app.include_router(challenges_router, prefix="", include_in_schema=False)
 
 
 @app.get("/docs", include_in_schema=False)
@@ -61,4 +64,5 @@ def root():
         "docs_url": "/api/docs",
         "health_check": "/api/health",
         "analyze_endpoint": "/api/analyze",
+        "challenges_endpoint": "/api/challenges",
     }

@@ -476,26 +476,32 @@ def _analyze_java_snippet_internal(code: str, error_message: Optional[str] = Non
         # Skip empty lines, comments, braces, class/method headers, if/for/while headers
         if not stripped or stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
             continue
-        if stripped.endswith("{") or stripped.endswith("}") or stripped.endswith(";"):
+
+        # Extract code portion before trailing line comment if present
+        comment_match = re.search(r"//.*$", line)
+        code_part = line[:comment_match.start()].strip() if comment_match else stripped
+
+        if not code_part:
             continue
-        if re.search(r"\b(class|interface|enum|public|private|protected|static|void|if|for|while|switch|else|catch|try)\b", stripped):
-            if stripped.endswith(")") or stripped.endswith("{") or "class " in stripped:
+        if code_part.endswith("{") or code_part.endswith("}") or code_part.endswith(";"):
+            continue
+        if re.search(r"\b(class|interface|enum|public|private|protected|static|void|if|for|while|switch|else|catch|try)\b", code_part):
+            if code_part.endswith(")") or code_part.endswith("{") or "class " in code_part:
                 continue
 
         # Look for typical statement lines that lack a semicolon
-        if any(keyword in stripped for keyword in ["System.out", "return", "int ", "String ", "double ", "boolean ", "=", "throw "]):
+        if any(keyword in code_part for keyword in ["System.out", "return", "int ", "String ", "double ", "boolean ", "=", "throw "]):
             # Next line might be a continuation dot
             if idx < len(raw_lines) and raw_lines[idx].strip().startswith("."):
                 continue
                 
             fixed_lines = list(raw_lines)
-            comment_match = re.search(r"//.*$", line)
             if comment_match:
                 comment_idx = comment_match.start()
-                code_part = line[:comment_idx].rstrip()
+                raw_code_part = line[:comment_idx].rstrip()
                 comment_part = line[comment_idx:].strip()
-                fixed_lines[idx - 1] = f"{code_part}; {comment_part}"
-                col_offset = len(code_part) + 1
+                fixed_lines[idx - 1] = f"{raw_code_part}; {comment_part}"
+                col_offset = len(raw_code_part) + 1
             else:
                 fixed_lines[idx - 1] = line.rstrip() + ";"
                 col_offset = len(line.rstrip()) + 1
